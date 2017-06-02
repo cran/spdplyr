@@ -1,6 +1,27 @@
 setOldClass( c("tbl_df", "tbl", "data.frame" ) )
 setOldClass( c("grouped_df", "tbl_df", "tbl", "data.frame" ) )
 
+#' dplyr S3 methods
+#' 
+#' Worker functions used by dplyr features. 
+#' 
+#' These will work for the Spatial-DataFrame  objects, though not properly for any-Spatial. 
+#' @param x input Spatial object
+#' @name dplyr-S3
+#' @export
+#' @importFrom dplyr groups tbl_vars
+#' @examples 
+#' if (utils::packageVersion("dplyr") > "0.5.0") {
+#' 
+#' spmap %>% mutate_if(is.numeric, as.character)
+#' spmap %>% mutate_all(funs(as.character))
+#' spmap %>% mutate_at(vars(starts_with("L")), funs(as.integer))
+#' }
+tbl_vars.Spatial <- function(x) names(x)
+#' @name dplyr-S3
+#' @export
+groups.Spatial <- function(x) NULL
+
 #' Dplyr verbs for Spatial
 #' 
 #' Direct application of the dplyr verbs to Spatial objects. There is no need for a conversion from and to Spatial with this approach. Not all verbs are supported, see Details. 
@@ -14,11 +35,15 @@ setOldClass( c("grouped_df", "tbl_df", "tbl", "data.frame" ) )
 #'  summarise for points and multipoints, ... todo single Multipoint for multiple points
 #' @param .data A tbl.
 #' @param ... Name-value pairs of expressions. See \code{\link[dplyr]{mutate_}}
+#' @param .keep_all argument for \code{\link[dplyr]{distinct}}, we have to set it to TRUE
 #' @param .dots Used to work around non-standard evaluation. 
-#' @note Beware that attributes stored on Spatial objects *are not* linked to the geometry. Attributes are often used to store the area or perimeter length or centroid values but these may be completely unmatched to the underlying geometries. 
+#' @note Beware that attributes stored on Spatial objects *are not* linked to the geometry. Attributes are often used to 
+#' store the area or perimeter length or centroid values but these may be completely unmatched to the underlying geometries. 
+#' @section Warning:
+#' `distinct` uses behaviour identical to `duplicated`, by coercing all the relevant values to text and determining uniqueness
+#' from those. `dplyr::distinct` uses a different internal method that will give different results for some cases of numeric data. 
 #' @rdname dplyr-Spatial
 #' @name dplyr-Spatial
-#' @export
 #' @examples 
 #' library(sp)
 #' library(maptools)
@@ -52,21 +77,35 @@ setOldClass( c("grouped_df", "tbl_df", "tbl", "data.frame" ) )
 #' plot(col = rainbow(nlevels(factor(wrld_simpl$REGION)), alpha = 0.3))
 #' }
 #' @importFrom dplyr %>% arrange mutate_ transmute_ filter_ arrange_ slice_ select_ rename_ distinct_ summarise_
+#' @importFrom dplyr     mutate
 #' @importFrom lazyeval all_dots
+NULL
+#' @noRd
+#' @importFrom tibble as_tibble
+data_or_stop <- function(x, mess = "") {
+  if (!.hasSlot(x, "data")) {
+    stop("no data %s for a %s", mess, class(x))
+  } 
+  as_tibble(x@data)
+}
+#' @export
+#' @name dplyr-Spatial
+mutate.Spatial <- function(.data, ...) {
+  dat <- data_or_stop(.data, " to mutate ")
+  .data@data <- mutate(dat, ...)
+  .data
+}
+#' @export
+#' @name dplyr-Spatial
 mutate_.Spatial <-  function(.data, ..., .dots) {
   dots <- lazyeval::all_dots(.dots, ..., all_named = TRUE)
-  
-  if (.hasSlot(.data, "data")) {
-    dat <- mutate_(as.data.frame(.data), .dots = dots)
-  } else {
-    stop("no data to mutate for a %s", class(.data))
-  }
-  .data@data <- dat
+  dat <- data_or_stop(.data, " to mutate ")
+  .data@data <- mutate_(dat, .dots = dots)
   .data
 }
 
 
-#' @rdname dplyr-Spatial
+#' @name dplyr-Spatial
 #' @export
 #' @importFrom dplyr inner_join
 #' @importFrom spbabel sptable sp 
@@ -89,18 +128,15 @@ mutate_.Spatial <-  function(.data, ..., .dots) {
 #' ##plot(rgeos::gUnionCascaded(w, id = w$ar), col = rainbow(nlevels(factor(w$ar)), alpha = 0.5))
 #' }
 summarise_.Spatial <- function(.data, ...) {
-  if (!.hasSlot(.data, "data")) {
-    stop("no data for distinct for a %s", class(.data))
-  }
-  # this should only ever return one-row objects
-  # we cannot group_by on Spatial
-  dat <- summarise_(as.data.frame(.data), ...)
+  dat <- data_or_stop(.data, " to summarize ")
+  dat <- summarise_(.data@data, ...)
   
   # row.names(dat) <- "1"
   gbomb <- spbabel::sptable(.data)
   if (inherits(.data@data, "grouped_df")) {
     groups <- attr(.data@data, "indices")  ## only robust for single-level group_by for now
-    regroup <- tibble(labs =  unlist(lapply(seq_along(attr(.data@data, "group_sizes")), function(x) rep(x, attr(.data@data, "group_sizes")[x]))), 
+    grp_sizes <- attr(.data@data, "group_sizes")
+    regroup <- tibble(labs =  unlist(lapply(seq_along(grp_sizes), function(x) rep(x, grp_sizes[x]))), 
                           inds = unlist(groups) + 1)
     
     gbomb <- gbomb  %>% 
@@ -116,133 +152,210 @@ summarise_.Spatial <- function(.data, ...) {
   
 }
 
+#' @importFrom dplyr summarise
+#' @name dplyr-Spatial
+#' @export
+#' @importFrom rlang .data
+#' @importFrom dplyr inner_join mutate select
+summarise.Spatial <- function(.data, ...) {
+  dat <- data_or_stop(.data, " to summarize ")
+
+  dat <- summarise(.data@data, ...)
+  
+  # row.names(dat) <- "1"
+  gbomb <- spbabel::sptable(.data)
+  
+  ## prepare the groups
+  if (inherits(.data@data, "grouped_df")) {
+    groups <- attr(.data@data, "indices")  ## only robust for single-level group_by for now
+    grp_sizes <- attr(.data@data, "group_sizes")
+    regroup <- tibble(labs =  unlist(lapply(seq_along(grp_sizes), function(x) rep(x, grp_sizes[x]))), 
+                      inds = unlist(groups) + 1)
+    
+    gbomb <- gbomb  %>% 
+      dplyr::inner_join(regroup, c("object_" = "inds"))  %>% 
+      dplyr::mutate(object_ = .data$labs)  %>% 
+     dplyr::select(-.data$labs)  %>% 
+      dplyr::arrange(.data$object_, .data$branch_, .data$order_)
+    
+  } else {
+    gbomb[["object_"]] <- 1
+  }
+  spbabel::sp(gbomb, attr_tab = dat, crs = proj4string(.data))
+  
+}
 #' @importFrom dplyr group_by_
 #' @importFrom tibble as_tibble 
-#' @rdname dplyr-Spatial
+#' @name dplyr-Spatial
 #' @export
 group_by_.Spatial <- function(.data, ...) {
-  if (!.hasSlot(.data, "data")) {
-    stop("no data for distinct for a %s", class(.data))
-  }
-  orownames <- row.names(.data)
-  dat <- group_by_(as_tibble(as.data.frame(.data)), ...)
-  
-  #groupatts <- attributes(dat)
-  #groupatts$class <- "data.frame"
-  #groupatts$row.names <- orownames
-  #dat <- as.data.frame(dat)
-  #attributes(dat) <- groupatts
-  .data@data <- dat
+  .data@data <- group_by_(data_or_stop(.data, " to group_by "), ...)
+  .data
+}
+
+#' @importFrom dplyr group_by
+#' @importFrom tibble as_tibble 
+#' @name dplyr-Spatial
+#' @importFrom rlang .data
+#' @export
+group_by.Spatial <- function(.data, ...) {
+  .data@data <- group_by(data_or_stop(.data, " to group_by "), ...)
   .data
 }
 
 
-
-
-
-
-
-
-#' @rdname dplyr-Spatial
+#' @name dplyr-Spatial
 #' @export
 filter_.Spatial <- function(.data, ..., .dots) {
-  if (!.hasSlot(.data, "data")) {
-    stop("no data to filter for a %s", class(.data))
-  }
+  dat <- data_or_stop(.data, " to filter ")
+  
   dots <- lazyeval::all_dots(.dots, ..., all_named = TRUE)
-  masks <- lazyeval::lazy_eval(dots, data = as.data.frame(.data@data))
+  masks <- lazyeval::lazy_eval(dots, data = dat)
   subset(.data, Reduce(`&`, masks))
 }
-
-
-#' @rdname dplyr-Spatial
-#' @importFrom tibble as_tibble 
-#' @importFrom dplyr arrange_ distinct_ rename_ select_ slice_ filter_ transmute_ mutate_ 
+#' @importFrom dplyr filter
+#' @name dplyr-Spatial
 #' @export
-arrange_.Spatial <- function(.data, ...) {
-  if (!.hasSlot(.data, "data")) {
-    stop("no data to arrange for a %s", class(.data))
-  }
-  dat <- as_tibble(as.data.frame(.data))
-  dat$order <- seq(nrow(dat))
-  dat <- arrange_(dat, ...)
-  .data[dat$order, ]
+filter.Spatial <- function(.data, ...) {
+   dat <- data_or_stop(.data, " to filter ")
+   nam <- new_name_from_these(names(dat))
+   dat[[nam]] <- seq_len(nrow(dat))
+   dat <- filter(dat, ...)
+   .data[dat[[nam]], ]
 }
 
 
-#' @rdname dplyr-Spatial
+#' @importFrom dplyr arrange_ 
+#' @name dplyr-Spatial
+#' @export
+arrange_.Spatial <- function(.data, ...) {
+  dat <- data_or_stop(.data, " to arrange ")
+  nam <- new_name_from_these(names(dat))
+  dat[[nam]] <- seq_len(nrow(dat))
+  dat <- arrange_(dat, ...)
+  .data <- .data[dat[[nam]], ]
+  .data[[nam]] <- NULL
+  .data
+}
+
+#' @importFrom dplyr arrange 
+#' @name dplyr-Spatial
+#' @export
+arrange.Spatial <- function(.data, ...) {
+  dat <- data_or_stop(.data, " to arrange ")
+  nam <- new_name_from_these(names(dat))
+  dat[[nam]] <- seq_len(nrow(dat))
+  dat <- arrange(dat, ...)
+  .data <- .data[dat[[nam]], ]
+  .data[[nam]] <- NULL
+  .data
+}
+
+
+#' @name dplyr-Spatial
 #' @importFrom tibble as_tibble 
 #' @export
 slice_.Spatial <- function(.data, ...) {
-  if (!.hasSlot(.data, "data")) {
-    stop("no data to slice for a %s", class(.data))
-  }
-  dat <-  as_tibble(as.data.frame(.data))
-  dat$order <- seq(nrow(dat))
+  dat <- data_or_stop(.data, " to filter ")
+  nam <- new_name_from_these(names(dat))
+  dat[[nam]] <- seq_len(nrow(dat))
   dat <- slice_(dat, ...)
-  .data[dat$order, ]
+  .data <- .data[dat[[nam]], ]
+  .data[[nam]] <- NULL
+  .data
 }
-
-#' @rdname dplyr-Spatial
+#' @name dplyr-Spatial
+#' @importFrom dplyr slice slice_
+#' @export
+slice.Spatial <- function(.data, ...) {
+  dat <- data_or_stop(.data, " to filter ")
+  nam <- new_name_from_these(names(dat))
+  dat[[nam]] <- seq_len(nrow(dat))
+  dat <- slice(dat, ...)
+  .data <- .data[dat[[nam]], ]
+  .data[[nam]] <- NULL
+  .data
+}
+#' @name dplyr-Spatial
 #' @export
 select_.Spatial <- function(.data, ...) {
-  if (!.hasSlot(.data, "data")) {
-    stop("no data to select for a %s", class(.data))
-  }
-  dat <-  select_(as.data.frame(.data), ...)
-  .data[, names(dat)]
+  dat <- data_or_stop(.data, " to filter ")
+  dat <-  select_(.data@data, ...)
+  .data[, names(dat), drop = FALSE]
+}
+#' @importFrom dplyr select
+#' @name dplyr-Spatial
+#' @export
+select.Spatial <- function(.data, ...) {
+  dat <- data_or_stop(.data, " to filter ")
+  dat <-  select(.data@data, ...)
+  .data[, names(dat), drop = FALSE]
 }
 
-#' @rdname dplyr-Spatial
+#' @name dplyr-Spatial
 #' @importFrom tibble as_tibble 
 #' @export
 rename_.Spatial <- function(.data, ...) {
-  if (!.hasSlot(.data, "data")) {
-    stop("no data to rename for a %s", class(.data))
-  }
+  dat <- data_or_stop(.data, " to filter ")
   onames <- names(.data)
-  dat <-  rename_(as_tibble(as.data.frame(.data)), ...)
+  dat <-  rename_(dat, ...)
+  names(.data) <- names(dat)
+  .data
+}
+#' @name dplyr-Spatial
+#' @importFrom dplyr rename
+#' @export
+rename.Spatial <- function(.data, ...) {
+  dat <- data_or_stop(.data, " to filter ")
+  onames <- names(.data)
+  dat <-  rename(dat, ...)
   names(.data) <- names(dat)
   .data
 }
 
-
-#' @importFrom utils tail
-#' @importFrom tibble as_tibble
-#' @rdname dplyr-Spatial
+#' @name dplyr-Spatial
 #' @export
-distinct_.Spatial <- function(.data, ...) {
-  if (!.hasSlot(.data, "data")) {
-    stop("no data for distinct for a %s", class(.data))
-  }
-  #orownames <- rownames(.data)
-  nam <- utils::tail(make.names(c(names(.data), "order"), unique = TRUE), 1)
-  .dat <- as_tibble(as.data.frame(.data))
-  .dat[[nam]] <- seq(nrow(.data))
-  dat <- distinct_(.dat, ...)
-  
-  out <- .data[dat[[nam]], ] 
-  #out[[nam]] <- NULL
+distinct_.Spatial <- function(.data, ..., .keep_all = FALSE) {
+  dat <- data_or_stop(.data, " to distinct")
+  ## use the inputs to isolate the columns
+  dat <- dplyr::select_(dat, ...)
+  fac <- do.call(paste, dat)
+  out <- .data[!duplicated(fac), ]
+  if (!.keep_all) out <- out[, names(dat)]
+  out
+}
+#' @importFrom dplyr distinct
+#' @name dplyr-Spatial
+#' @export
+distinct.Spatial <- function(.data, ..., .keep_all = FALSE) {
+  dat <- data_or_stop(.data, " to distinct")
+  ## use the inputs to isolate the columns
+  dat <- dplyr::select(dat, ...)
+  fac <- do.call(paste, dat)
+  out <- .data[!duplicated(fac), ]
+  if (!.keep_all) out <- out[, names(dat)]
   out
 }
 
-#' @rdname dplyr-Spatial
+
+
+#' @name dplyr-Spatial
 #' @param y tbl to join
 #' @importFrom dplyr left_join inner_join
 #' @inheritParams dplyr::left_join
 #' @export
 left_join.Spatial <- function (x, y, by = NULL, copy = FALSE, ...) {
-  x@data <- left_join(as_tibble(as.data.frame(x)), y, by = by, copy = copy, ...)
+  x@data <- left_join(as_tibble(x@data), y, by = by, copy = copy, ...)
   x
 }
 
-#' @rdname dplyr-Spatial
+#' @name dplyr-Spatial
 #' @export
  inner_join.Spatial <- function (x, y, by = NULL, copy = FALSE, ...) {
    randomkey <- paste(sample(c(letters, 1:100)), collapse = "")
    ## kludge to record which rows are kept
    x[[randomkey]] <- seq(nrow(x))
-   .data <- inner_join(as_tibble(as.data.frame(x)), y, by = by, copy = copy, ...)
+   .data <- inner_join(as_tibble(x@data), y, by = by, copy = copy, ...)
    x <- x[.data[[randomkey]], ]
    .data[[randomkey]] <- NULL
    x@data <- .data

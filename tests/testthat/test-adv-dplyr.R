@@ -10,8 +10,18 @@ poly1 <- wrld_simpl
 line1 <- as(wrld_simpl, "SpatialLinesDataFrame")
 point1 <- as(line1, "SpatialPointsDataFrame")
 test_that("group by and summarize is quiet", {
-  testthat::skip_on_cran()
-expect_silent(g <- wrld_simpl  %>% group_by(REGION)  %>% summarize(alon = mean(LON), mxlat = max(LAT), mxarea = max(AREA)))
+  expect_silent(g <- wrld_simpl  %>% group_by(REGION) )
+  expect_silent(g[1:20, ] %>% summarize(alon = mean(LON), mxlat = max(LAT), mxarea = max(AREA)))
+  expect_silent(wrld_simpl[1:20, ]  %>% group_by(REGION, SUBREGION) %>% summarize(alon = mean(LON), mxlat = max(LAT), mxarea = max(AREA)))
+  expect_silent(g[1:10, ] %>% summarise(alon = mean(LON)))
+  
+  ## make sure we are &ing togeter in filter
+  worldcorner <- wrld_simpl %>% 
+    mutate(lon = coordinates(wrld_simpl)[,1], lat = coordinates(wrld_simpl)[,2]) %>% 
+    filter(lat < -20, lon > 60) %>% 
+    dplyr::select(NAME)
+  
+  
 })
 
 
@@ -50,11 +60,29 @@ test_that("everthing is ok", {
   x1 %>% arrange(AREA)
   x1 %>% dplyr::select(NAME, POP2005, AREA)
   x1 %>% rename(Country = NAME, Population = POP2005)
-  x1 %>% distinct(AREA, .keep_all = TRUE)
+  expect_that(x1 %>% distinct(AREA, .keep_all = TRUE) %>% nrow(), equals(204))
   x1 %>% mutate(AREA = REGION * 2)
   x1 %>% transmute(NAME = gsub("^A", "Z", NAME))
-  x1 %>% summarize(a = 'POP2005')
+  x1[sample(nrow(x1), 10), ] %>% summarize(a = 'POP2005')
   
   #x1 %>% group_by(REGION)
   #x1 %>% summarize(a = POP2005)
 })
+
+test_that("mutate_all, mutate_at", {
+  skip_if_not(utils::packageVersion("dplyr") > "0.5.0")
+
+library("maptools")
+library("spdplyr")
+
+data(wrld_simpl)
+
+wrld_simpl %>% mutate_all(funs(as.character))
+wrld_simpl %>% mutate_at(vars(starts_with("L")), funs(as.integer))
+#wrld_simpl %>% mutate_if(vars(starts_with("L")), funs(as.integer))
+ spmap %>% mutate_if(is.numeric, as.character)
+ spmap %>% mutate_all(funs(as.character))
+ spmap %>% mutate_at(vars(starts_with("L")), funs(as.integer))
+
+})
+

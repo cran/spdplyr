@@ -31,16 +31,35 @@ test_that("filter works for all geometric types", {
   expect_that(nrow(mpoint1 %>% filter(NAME == "Australia")), equals(1L) )
   
   ## multipoint needs work, slicing here duplicates row.names so catch this warning as expected for now
-  expect_that(nrow(slice(mpoint1, 1:2)), testthat::gives_warning("some row.names duplicated"))
+  
+  ## update 2017-04-30 MDS no warning needed anymore
+  #expect_that(nrow(slice(mpoint1, 1:2)), testthat::gives_warning("some row.names duplicated"))
+  expect_silent(nrow(slice(mpoint1, 1:2)))
 })
 
 # filter() (and slice())
 # arrange()
 # select() (and rename())
 # distinct()
-# mutate() (and transmute())
 # summarise()
 # sample_n() and sample_frac()
+
+test_that("mutate works for all geometric types", {
+  expect_that( ncol(mutate(poly1, NAME = NAME)), equals(11) )
+  expect_that( ncol(mutate(line1, NAME = NAME)), equals(11) )
+  expect_that( ncol(mutate(point1, NAME = NAME)), equals(14) )
+  expect_that( ncol(mutate(mpoint1, NAME = NAME)), equals(11) )
+
+  expect_that( ncol(mutate(poly1, NAMECOPY = NAME)), equals(12) )
+  expect_that( ncol(mutate(line1, NAMECOPY = NAME)), equals(12) )
+  expect_that( ncol(mutate(point1, NAMECOPY = NAME)), equals(15) )
+  expect_that( ncol(mutate(mpoint1, NAMECOPY = NAME)), equals(12) )
+  
+  expect_that( ncol(transmute(poly1, NAMECOPY = NAME)), equals(1) )
+  expect_that( ncol(transmute(line1, NAMECOPY = NAME)), equals(1) )
+  expect_that( ncol(transmute(point1, NAMECOPY = NAME)), equals(1) )
+  expect_that( ncol(transmute(mpoint1, NAMECOPY = NAME)), equals(1) )
+})
 
 test_that("arrange works", {
   expect_that(nrow(arrange(poly1)), equals(246L) )
@@ -126,12 +145,15 @@ test_that("various examples", {
 
 ws <- filter(wrld_simpl, NAME %in% c("Portugal", "France", "Spain"))
 ws$chNAME <- levels(ws$NAME)[ws$NAME]
-d <- tibble(ent = c("Australia", "Portugal", "New Zealand", "France", "Spain"), AREA = seq(1.2, 2, length = 5))
+d <- data.frame(ent = c("Australia", "Portugal", "New Zealand", "France", "Spain"), AREA = seq(1.2, 2, length = 5), 
+                stringsAsFactors = FALSE)
 test_that("joins work", {
   expect_that(all(is.na(left_join(ws@data, d)$ent)), is_true())
   expect_that(all(is.na(left_join(ws, d)$ent)), is_true())
   
-  expect_that(left_join(ws@data, d, c("NAME" = "ent")), gives_warning("joining character"))
+  ## MDS changed 2017-05-06
+  #expect_that(left_join(ws@data, d, c("NAME" = "ent")), gives_warning("joining character"))
+  expect_that(left_join(ws@data, d, c("NAME" = "ent")), gives_warning("coercing into character vector"))
   expect_that(left_join(ws, d, c("chNAME" = "ent")), is_a(class(ws)))
   
   expect_that(nrow(inner_join(ws@data, d)), equals(0L))
@@ -146,3 +168,4 @@ test_that("joins work", {
   expect_that(nrow(inner_join(ws, d[1:4, ], c("chNAME" = "ent"))), equals(2L))
   
 })
+
