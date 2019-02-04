@@ -1,6 +1,7 @@
 setOldClass( c("tbl_df", "tbl", "data.frame" ) )
 setOldClass( c("grouped_df", "tbl_df", "tbl", "data.frame" ) )
-
+#' @importFrom utils globalVariables
+utils::globalVariables("group_rows")
 #' dplyr S3 methods
 #' 
 #' Worker functions used by dplyr features. 
@@ -86,6 +87,7 @@ data_or_stop <- function(x, mess = "") {
   if (!.hasSlot(x, "data")) {
     stop("no data %s for a %s", mess, class(x))
   } 
+  if (inherits(x@data, "tbl_df")) return(x@data)
   as_tibble(x@data)
 }
 #' @export
@@ -129,7 +131,7 @@ mutate_.Spatial <-  function(.data, ..., .dots) {
 #' }
 summarise_.Spatial <- function(.data, ...) {
   dat <- data_or_stop(.data, " to summarize ")
-  dat <- summarise_(.data@data, ...)
+  dat <- summarise(dat, ...)
   
   # row.names(dat) <- "1"
   gbomb <- spbabel::sptable(.data)
@@ -157,10 +159,15 @@ summarise_.Spatial <- function(.data, ...) {
 #' @export
 #' @importFrom rlang .data
 #' @importFrom dplyr inner_join mutate select
+#' @importFrom utils packageVersion
+#' @rawNamespace 
+#' if(utils::packageVersion("dplyr") >= "0.8.0") {
+#' importFrom(dplyr, group_rows)
+#' }
 summarise.Spatial <- function(.data, ...) {
   dat <- data_or_stop(.data, " to summarize ")
 
-  dat <- summarise(.data@data, ...)
+  dat <- summarise(dat, ...)
   
   # row.names(dat) <- "1"
   gbomb <- spbabel::sptable(.data)
@@ -168,9 +175,23 @@ summarise.Spatial <- function(.data, ...) {
   ## prepare the groups
   if (inherits(.data@data, "grouped_df")) {
     groups <- attr(.data@data, "indices")  ## only robust for single-level group_by for now
-    grp_sizes <- attr(.data@data, "group_sizes")
+    if (is.null(groups)) {
+     if (utils::packageVersion("dplyr") >= "0.8.0")  {
+       groups <- group_rows(.data@data)  
+     } else {
+       groups <- attr(.data@data, "groups")[[".rows"]]
+     }
+    }
+    grp_sizes <- dplyr::group_size(.data@data)
+    if (is.null(grp_sizes)) {
+      if (utils::packageVersion("dplyr") >= "0.8.0")  {
+        grp_sizes <- group_rows(.data@data)  
+      } else {
+        groups <- lengths(attr(.data@data, "groups")[[".rows"]])
+      }
+    }
     regroup <- tibble(labs =  unlist(lapply(seq_along(grp_sizes), function(x) rep(x, grp_sizes[x]))), 
-                      inds = unlist(groups) + 1)
+                      inds = unlist(groups))
     
     gbomb <- gbomb  %>% 
       dplyr::inner_join(regroup, c("object_" = "inds"))  %>% 
@@ -189,7 +210,7 @@ summarise.Spatial <- function(.data, ...) {
 #' @name dplyr-Spatial
 #' @export
 group_by_.Spatial <- function(.data, ...) {
-  .data@data <- group_by_(data_or_stop(.data, " to group_by "), ...)
+  .data@data <- group_by(data_or_stop(.data, " to group_by "), ...)
   .data
 }
 
