@@ -12,7 +12,7 @@
 
 <meta name="author" content="Michael D. Sumner" />
 
-<meta name="date" content="2019-02-04" />
+<meta name="date" content="2019-05-13" />
 
 <title>spdplyr</title>
 
@@ -291,6 +291,9 @@ code > span.al { color: #ff0000; font-weight: bold; }
 code > span.fu { color: #900; font-weight: bold; }  code > span.er { color: #a61717; background-color: #e3d2d2; } 
 </style>
 
+
+
+
 </head>
 
 <body>
@@ -299,8 +302,8 @@ code > span.fu { color: #900; font-weight: bold; }  code > span.er { color: #a61
 
 
 <h1 class="title toc-ignore">spdplyr</h1>
-<h4 class="author"><em>Michael D. Sumner</em></h4>
-<h4 class="date"><em>2019-02-04</em></h4>
+<h4 class="author">Michael D. Sumner</h4>
+<h4 class="date">2019-05-13</h4>
 
 
 
@@ -354,7 +357,7 @@ code > span.fu { color: #900; font-weight: bold; }  code > span.er { color: #a61
 <a class="sourceLine" id="cb3-24" data-line-number="24"><span class="co">#&gt; variables   : 1</span></a>
 <a class="sourceLine" id="cb3-25" data-line-number="25"><span class="co">#&gt; # A tibble: 1 x 1</span></a>
 <a class="sourceLine" id="cb3-26" data-line-number="26"><span class="co">#&gt;       big</span></a>
-<a class="sourceLine" id="cb3-27" data-line-number="27"><span class="co">#&gt;     &lt;dbl&gt;</span></a>
+<a class="sourceLine" id="cb3-27" data-line-number="27"><span class="co">#&gt;     &lt;int&gt;</span></a>
 <a class="sourceLine" id="cb3-28" data-line-number="28"><span class="co">#&gt; 1 1638094</span></a></code></pre></div>
 <p>This approach is limited to the simple verbs <code>arrange</code>, <code>distinct</code>, <code>filter</code>, <code>mutate</code>, <code>rename</code>, <code>select</code>, <code>slice</code>, <code>transmute</code>, and <code>summarize</code>. Summarize either on its own or after a <code>group_by</code> collapses to a non-topological union of all sub-geometries within a group without any consideration of topology or relationships.</p>
 <p><strong>BEWARE</strong>: This is not a proven method for dealing with Spatial data, use at your own risk.</p>
