@@ -1,4 +1,4 @@
-## ---- echo = FALSE,message=FALSE-----------------------------------------
+## ---- echo = FALSE,message=FALSE----------------------------------------------
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
@@ -6,7 +6,7 @@ knitr::opts_chunk$set(
 library(maptools)
 library(spdplyr)
 
-## ------------------------------------------------------------------------
+## -----------------------------------------------------------------------------
 data(quakes)
 library(sp)
 coordinates(quakes) <- ~long+lat
@@ -14,7 +14,7 @@ library(spdplyr)
 ## plot a subset of locations by number of stations
 quakes %>% dplyr::filter(mag <5.5 & mag > 4.5) %>% dplyr::select(stations) %>% spplot()
 
-## ------------------------------------------------------------------------
+## -----------------------------------------------------------------------------
 library(maptools)
 data(wrld_simpl)
 ## put the centre-of-mass centroid on wrld_simpl as an attribute and filter/select
